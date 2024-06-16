@@ -1,31 +1,128 @@
-Great! Based on your input, we'll design the Android application to communicate with the Hapi.js backend deployed at `http://34.128.99.253/`. We'll use Retrofit for network requests and Firebase for authentication management on the client side.
 
-Here is the outline of the application architecture and implementation plan.
+#### **LoginActivity**
+   ```kotlin
+   @Composable
+   fun LoginScreen(viewModel: AuthViewModel, onLoginSuccess: () -> Unit) {
+       val email = remember { mutableStateOf("") }
+       val password = remember { mutableStateOf("") }
+       val authState by viewModel.authState.collectAsState()
 
-= SPEC-001: Kotlin Android Application for Nurse Predictions
-:sectnums:
-:toc:
+       Column(modifier = Modifier.padding(16.dp)) {
+           TextField(value = email.value, onValueChange = { email.value = it }, label = { Text("Email") })
+           TextField(value = password.value, onValueChange = { password.value = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation())
+           Button(onClick = { viewModel.login(email.value, password.value) }) {
+               Text("Login")
+           }
 
+           when (authState) {
+               is AuthState.Loading -> CircularProgressIndicator()
+               is AuthState.Success -> {
+                   Text("Login successful")
+                   LaunchedEffect(Unit) {
+                       onLoginSuccess()
+                   }
+               }
+               is AuthState.Error -> Text("Error: ${(authState as AuthState.Error).message}")
+           }
+       }
+   }
 
-== Background
+   class LoginActivity : ComponentActivity() {
+       private val viewModel: AuthViewModel by viewModels()
 
-The purpose of this application is to provide an interface for nurses to manage predictions for infant health based on various input metrics. The backend is implemented using Hapi.js and Firebase, and the Android client will interact with this backend to perform user authentication and CRUD operations for predictions.
+       override fun onCreate(savedInstanceState: Bundle?) {
+           super.onCreate(savedInstanceState)
+           setContent {
+               LoginScreen(viewModel) {
+                   startActivity(Intent(this, MainActivity::class.java))
+                   finish()
+               }
+           }
+       }
+   }
+   ```
 
-== Requirements
+#### **MainActivity**
+   - MainActivity will serve as the main container for the app's navigation.
+   - Use Jetpack Navigation Compose to navigate between different screens.
 
-- **User Authentication**:
-  - Must have the ability to register, login, and logout.
-  - Must handle and display appropriate error messages.
+   ```kotlin
+   @Composable
+   fun MainScreen() {
+       val navController = rememberNavController()
+       NavHost(navController, startDestination = "predictions") {
+           composable("predictions") { PredictionsListScreen(navController) }
+           composable("prediction/{id}") { backStackEntry ->
+               val id = backStackEntry.arguments?.getString("id")
+               PredictionDetailScreen(navController, id)
+           }
+           composable("profile") { ProfileScreen(navController) }
+       }
+   }
 
-- **Prediction Management**:
-  - Must allow the nurse to create new predictions.
-  - Must display a list of predictions for the authenticated user.
-  - Must allow modifications to existing predictions.
-  - Must support profile updates for the nurse.
-  - Must allow retrieval of a specific prediction by ID.
-  - Must support deletion of predictions.
+   class MainActivity : ComponentActivity() {
+       override fun onCreate(savedInstanceState: Bundle?) {
+           super.onCreate(savedInstanceState)
+           setContent {
+               MainScreen()
+           }
+       }
+   }
+   ```
 
-== Method
+#### **PredictionsListScreen**
+   ```kotlin
+   @Composable
+   fun PredictionsListScreen(navController: NavController, viewModel: PredictionViewModel = viewModel()) {
+       val predictions by viewModel.predictions.collectAsState()
+       
+       Column {
+           predictions.forEach { prediction ->
+               Text(text = prediction.babyName, modifier = Modifier.clickable {
+                   navController.navigate("prediction/${prediction.id}")
+               })
+           }
+       }
+   }
+   ```
+
+#### **PredictionDetailScreen**
+   ```kotlin
+   @Composable
+   fun PredictionDetailScreen(navController: NavController, predictionId: String?) {
+       val viewModel: PredictionViewModel = viewModel()
+       val prediction by viewModel.getPredictionById(predictionId ?: "").collectAsState()
+
+       prediction?.let {
+           Column {
+               Text(text = "Baby Name: ${it.babyName}")
+               Text(text = "Prediction: ${it.prediction}")
+               // other prediction details
+               Button(onClick = { navController.navigateUp() }) {
+                   Text("Back")
+               }
+           }
+       }
+   }
+   ```
+
+#### **ProfileScreen**
+   ```kotlin
+   @Composable
+   fun ProfileScreen(navController: NavController, viewModel: ProfileViewModel = viewModel()) {
+       val profile by viewModel.profile.collectAsState()
+
+       Column {
+           profile?.let {
+               Text(text = "Name: ${it.name}")
+               // profile image and other details
+           }
+           Button(onClick = { navController.navigateUp() }) {
+               Text("Back")
+           }
+       }
+   }
+   ```
 
 ### Architecture
 
