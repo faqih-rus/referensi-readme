@@ -1,327 +1,249 @@
 
-#### **LoginActivity**
-   ```kotlin
-   @Composable
-   fun LoginScreen(viewModel: AuthViewModel, onLoginSuccess: () -> Unit) {
-       val email = remember { mutableStateOf("") }
-       val password = remember { mutableStateOf("") }
-       val authState by viewModel.authState.collectAsState()
+### 1. **LoginActivity**
+#### Layout XML (res/layout/activity_login.xml)
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
 
-       Column(modifier = Modifier.padding(16.dp)) {
-           TextField(value = email.value, onValueChange = { email.value = it }, label = { Text("Email") })
-           TextField(value = password.value, onValueChange = { password.value = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation())
-           Button(onClick = { viewModel.login(email.value, password.value) }) {
-               Text("Login")
-           }
+    <EditText
+        android:id="@+id/email"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Email"
+        android:inputType="textEmailAddress" />
 
-           when (authState) {
-               is AuthState.Loading -> CircularProgressIndicator()
-               is AuthState.Success -> {
-                   Text("Login successful")
-                   LaunchedEffect(Unit) {
-                       onLoginSuccess()
-                   }
-               }
-               is AuthState.Error -> Text("Error: ${(authState as AuthState.Error).message}")
-           }
-       }
-   }
+    <EditText
+        android:id="@+id/password"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Password"
+        android:inputType="textPassword" />
 
-   class LoginActivity : ComponentActivity() {
-       private val viewModel: AuthViewModel by viewModels()
+    <Button
+        android:id="@+id/loginButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Login" />
 
-       override fun onCreate(savedInstanceState: Bundle?) {
-           super.onCreate(savedInstanceState)
-           setContent {
-               LoginScreen(viewModel) {
-                   startActivity(Intent(this, MainActivity::class.java))
-                   finish()
-               }
-           }
-       }
-   }
-   ```
-
-#### **MainActivity**
-   - MainActivity will serve as the main container for the app's navigation.
-   - Use Jetpack Navigation Compose to navigate between different screens.
-
-   ```kotlin
-   @Composable
-   fun MainScreen() {
-       val navController = rememberNavController()
-       NavHost(navController, startDestination = "predictions") {
-           composable("predictions") { PredictionsListScreen(navController) }
-           composable("prediction/{id}") { backStackEntry ->
-               val id = backStackEntry.arguments?.getString("id")
-               PredictionDetailScreen(navController, id)
-           }
-           composable("profile") { ProfileScreen(navController) }
-       }
-   }
-
-   class MainActivity : ComponentActivity() {
-       override fun onCreate(savedInstanceState: Bundle?) {
-           super.onCreate(savedInstanceState)
-           setContent {
-               MainScreen()
-           }
-       }
-   }
-   ```
-
-#### **PredictionsListScreen**
-   ```kotlin
-   @Composable
-   fun PredictionsListScreen(navController: NavController, viewModel: PredictionViewModel = viewModel()) {
-       val predictions by viewModel.predictions.collectAsState()
-       
-       Column {
-           predictions.forEach { prediction ->
-               Text(text = prediction.babyName, modifier = Modifier.clickable {
-                   navController.navigate("prediction/${prediction.id}")
-               })
-           }
-       }
-   }
-   ```
-
-#### **PredictionDetailScreen**
-   ```kotlin
-   @Composable
-   fun PredictionDetailScreen(navController: NavController, predictionId: String?) {
-       val viewModel: PredictionViewModel = viewModel()
-       val prediction by viewModel.getPredictionById(predictionId ?: "").collectAsState()
-
-       prediction?.let {
-           Column {
-               Text(text = "Baby Name: ${it.babyName}")
-               Text(text = "Prediction: ${it.prediction}")
-               // other prediction details
-               Button(onClick = { navController.navigateUp() }) {
-                   Text("Back")
-               }
-           }
-       }
-   }
-   ```
-
-#### **ProfileScreen**
-   ```kotlin
-   @Composable
-   fun ProfileScreen(navController: NavController, viewModel: ProfileViewModel = viewModel()) {
-       val profile by viewModel.profile.collectAsState()
-
-       Column {
-           profile?.let {
-               Text(text = "Name: ${it.name}")
-               // profile image and other details
-           }
-           Button(onClick = { navController.navigateUp() }) {
-               Text("Back")
-           }
-       }
-   }
-   ```
-
-### Architecture
-
-1. **Network Layer**:
-   - Use Retrofit for API calls.
-   - Use Firebase Authentication for managing user sessions.
-
-2. **UI Layer**:
-   - Use Jetpack Compose for building the UI components.
-   - Provide screens for registration, login, predictions list, prediction details, and profile management.
-
-3. **Data Layer**:
-   - Use Repository pattern to manage data operations.
-   - Use ViewModel to handle UI-related data in a lifecycle-conscious way.
-
-### Retrofit Configuration
-
-Define the API endpoints corresponding to the backend routes.
-
-```kotlin
-interface ApiService {
-    @POST("/auth/register")
-    suspend fun register(@Body request: RegisterRequest): Response<AuthResponse>
-
-    @POST("/auth/login")
-    suspend fun login(@Body request: LoginRequest): Response<AuthResponse>
-
-    @POST("/auth/logout")
-    suspend fun logout(@Header("Authorization") token: String): Response<LogoutResponse>
-
-    @POST("/nurse/predictions")
-    suspend fun createPrediction(
-        @Header("Authorization") token: String,
-        @PartMap data: Map<String, @JvmSuppressWildcards RequestBody>,
-        @Part image: MultipartBody.Part
-    ): Response<PredictionResponse>
-
-    @GET("/nurse/predictions")
-    suspend fun getPredictions(@Header("Authorization") token: String): Response<PredictionsResponse>
-
-    @PUT("/nurse/predictions/{id}")
-    suspend fun modifyPrediction(
-        @Header("Authorization") token: String,
-        @Path("id") id: String,
-        @Body request: ModifyPredictionRequest
-    ): Response<PredictionResponse>
-
-    @PUT("/nurse/profile")
-    suspend fun updateProfile(
-        @Header("Authorization") token: String,
-        @PartMap data: Map<String, @JvmSuppressWildcards RequestBody>,
-        @Part profileImage: MultipartBody.Part?
-    ): Response<ProfileResponse>
-
-    @GET("/nurse/predictions/{id}")
-    suspend fun getPredictionById(
-        @Header("Authorization") token: String,
-        @Path("id") id: String
-    ): Response<PredictionResponse>
-
-    @DELETE("/nurse/predictions/{id}")
-    suspend fun deletePrediction(
-        @Header("Authorization") token: String,
-        @Path("id") id: String
-    ): Response<DeletePredictionResponse>
-}
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
+</LinearLayout>
 ```
 
-### Data Models
-
-Define data models for the API requests and responses.
-
+#### Activity Class (LoginActivity.kt)
 ```kotlin
-data class RegisterRequest(val email: String, val password: String, val name: String)
-data class LoginRequest(val email: String, val password: String)
-data class AuthResponse(val status: Int, val message: String, val idToken: String?)
-data class LogoutResponse(val status: Int, val message: String)
-data class PredictionResponse(val status: String, val data: PredictionData?)
-data class PredictionsResponse(val status: String, val data: List<PredictionData>?)
-data class ModifyPredictionRequest(val babyName: String?, val weight: Double?, val id: String?)
-data class ProfileResponse(val status: String, val data: UserProfile?)
-data class DeletePredictionResponse(val status: String, val message: String)
+class LoginActivity : AppCompatActivity() {
 
-data class PredictionData(
-    val id: String,
-    val babyName: String,
-    val age: Int,
-    val weight: Double,
-    val lingkar_kepala: Double,
-    val lingkar_dada: Double,
-    val lingkar_lengan: Double,
-    val lingkar_perut: Double,
-    val lingkar_paha: Double,
-    val panjang_badan: Double,
-    val prediction: String,
-    val confidence: Double,
-    val suggestion: String,
-    val createdAt: String,
-    val updatedAt: String
-)
+    private lateinit var viewModel: AuthViewModel
 
-data class UserProfile(val name: String, val profileImageUrl: String)
-```
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_login)
 
-### Retrofit Instance
+        viewModel = ViewModelProvider(this).get(AuthViewModel::class.java)
 
-Create a Retrofit instance to handle API requests.
+        val emailEditText = findViewById<EditText>(R.id.email)
+        val passwordEditText = findViewById<EditText>(R.id.password)
+        val loginButton = findViewById<Button>(R.id.loginButton)
+        val progressBar = findViewById<ProgressBar>(R.id.progressBar)
 
-```kotlin
-object RetrofitInstance {
-    private val retrofit by lazy {
-        Retrofit.Builder()
-            .baseUrl("http://34.128.99.253/")
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-    }
-
-    val api: ApiService by lazy {
-        retrofit.create(ApiService::class.java)
-    }
-}
-```
-
-### Firebase Authentication
-
-Initialize Firebase Authentication and provide methods for login, logout, and registration.
-
-```kotlin
-object FirebaseAuthHelper {
-    private val auth: FirebaseAuth = Firebase.auth
-
-    fun register(email: String, password: String, callback: (result: AuthResult?, error: Exception?) -> Unit) {
-        auth.createUserWithEmailAndPassword(email, password)
-            .addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    callback(task.result, null)
-                } else {
-                    callback(null, task.exception)
+        viewModel.authState.observe(this, { state ->
+            when (state) {
+                is AuthState.Loading -> progressBar.visibility = View.VISIBLE
+                is AuthState.Success -> {
+                    progressBar.visibility = View.GONE
+                    startActivity(Intent(this, MainActivity::class.java))
+                    finish()
+                }
+                is AuthState.Error -> {
+                    progressBar.visibility = View.GONE
+                    Toast.makeText(this, state.message, Toast.LENGTH_LONG).show()
                 }
             }
-    }
+        })
 
-    fun login(email: String, password: String, callback: (result: AuthResult?, error: Exception?) -> Unit) {
-        auth.signInWithEmailAndPassword(email, password)
-            .addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    callback(task.result, null)
-                } else {
-                    callback(null, task.exception)
-                }
-            }
-    }
-
-    fun logout() {
-        auth.signOut()
-    }
-}
-```
-
-### UI Components
-
-Use Jetpack Compose to build the UI components for the application.
-
-```kotlin
-@Composable
-fun LoginScreen(viewModel: AuthViewModel) {
-    val email = remember { mutableStateOf("") }
-    val password = remember { mutableStateOf("") }
-    val authState by viewModel.authState.collectAsState()
-
-    Column(modifier = Modifier.padding(16.dp)) {
-        TextField(value = email.value, onValueChange = { email.value = it }, label = { Text("Email") })
-        TextField(value = password.value, onValueChange = { password.value = it }, label = { Text("Password") })
-        Button(onClick = { viewModel.login(email.value, password.value) }) {
-            Text("Login")
-        }
-
-        when (authState) {
-            is AuthState.Loading -> CircularProgressIndicator()
-            is AuthState.Success -> Text("Login successful")
-            is AuthState.Error -> Text("Error: ${(authState as AuthState.Error).message}")
+        loginButton.setOnClickListener {
+            val email = emailEditText.text.toString()
+            val password = passwordEditText.text.toString()
+            viewModel.login(email, password)
         }
     }
 }
 ```
 
-### ViewModel
+### 2. **MainActivity**
+MainActivity akan menjadi tempat utama untuk navigasi antara berbagai layar seperti daftar prediksi dan profil.
 
-Create a ViewModel to handle authentication logic and state management.
+#### Layout XML (res/layout/activity_main.xml)
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
 
+    <FrameLayout
+        android:id="@+id/fragment_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+</LinearLayout>
+```
+
+#### Activity Class (MainActivity.kt)
 ```kotlin
-class AuthViewModel(private val authHelper: FirebaseAuthHelper) : ViewModel() {
+class MainActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-    private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
-    val authState: StateFlow<AuthState> = _authState
+        if (savedInstanceState == null) {
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.fragment_container, PredictionsListFragment())
+                .commit()
+        }
+    }
+}
+```
+
+### 3. **PredictionsListFragment**
+#### Layout XML (res/layout/fragment_predictions_list.xml)
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <ListView
+        android:id="@+id/predictions_list"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
+</LinearLayout>
+```
+
+#### Fragment Class (PredictionsListFragment.kt)
+```kotlin
+class PredictionsListFragment : Fragment() {
+
+    private lateinit var viewModel: PredictionViewModel
+    private lateinit var listView: ListView
+    private lateinit var progressBar: ProgressBar
+
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View? {
+        val view = inflater.inflate(R.layout.fragment_predictions_list, container, false)
+        listView = view.findViewById(R.id.predictions_list)
+        progressBar = view.findViewById(R.id.progressBar)
+        return view
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        viewModel = ViewModelProvider(this).get(PredictionViewModel::class.java)
+
+        viewModel.predictions.observe(viewLifecycleOwner, { predictions ->
+            progressBar.visibility = View.GONE
+            val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_list_item_1, predictions.map { it.babyName })
+            listView.adapter = adapter
+        })
+
+        viewModel.loading.observe(viewLifecycleOwner, { isLoading ->
+            progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
+        })
+
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val prediction = viewModel.predictions.value?.get(position)
+            val intent = Intent(activity, PredictionDetailActivity::class.java)
+            intent.putExtra("PREDICTION_ID", prediction?.id)
+            startActivity(intent)
+        }
+
+        viewModel.loadPredictions()
+    }
+}
+```
+
+### 4. **PredictionDetailActivity**
+#### Layout XML (res/layout/activity_prediction_detail.xml)
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/babyName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Baby Name" />
+
+    <TextView
+        android:id="@+id/prediction"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Prediction" />
+
+    <!-- Add other prediction details here -->
+</LinearLayout>
+```
+
+#### Activity Class (PredictionDetailActivity.kt)
+```kotlin
+class PredictionDetailActivity : AppCompatActivity() {
+
+    private lateinit var viewModel: PredictionViewModel
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_prediction_detail)
+
+        viewModel = ViewModelProvider(this).get(PredictionViewModel::class.java)
+
+        val babyNameTextView = findViewById<TextView>(R.id.babyName)
+        val predictionTextView = findViewById<TextView>(R.id.prediction)
+
+        val predictionId = intent.getStringExtra("PREDICTION_ID")
+        viewModel.getPredictionById(predictionId).observe(this, { prediction ->
+            prediction?.let {
+                babyNameTextView.text = it.babyName
+                predictionTextView.text = it.prediction
+                // Set other prediction details
+            }
+        })
+    }
+}
+```
+
+### 5. **ViewModel Implementation**
+
+#### AuthViewModel (AuthViewModel.kt)
+```kotlin
+class AuthViewModel : ViewModel() {
+
+    private val _authState = MutableLiveData<AuthState>()
+    val authState: LiveData<AuthState> = _authState
 
     fun login(email: String, password: String) {
         _authState.value = AuthState.Loading
-        authHelper.login(email, password) { result, error ->
+        FirebaseAuthHelper.login(email, password) { result, error ->
             if (error != null) {
                 _authState.value = AuthState.Error(error.message ?: "Unknown error")
             } else {
@@ -330,71 +252,51 @@ class AuthViewModel(private val authHelper: FirebaseAuthHelper) : ViewModel() {
         }
     }
 }
-
-sealed class AuthState {
-    object Idle : AuthState()
-    object Loading : AuthState()
-    object Success : AuthState()
-    data class Error(val message: String) : AuthState()
-}
 ```
 
-== Implementation
+#### PredictionViewModel (PredictionViewModel.kt)
+```kotlin
+class PredictionViewModel : ViewModel() {
 
-### Steps to Implement
+    private val _predictions = MutableLiveData<List<PredictionData>>()
+    val predictions: LiveData<List<PredictionData>> = _predictions
 
-1. **Setup Project**:
-   - Create a new Kotlin project in Android Studio.
-   - Add necessary dependencies (Retrofit, Firebase, Jetpack Compose, etc.) in `build.gradle`.
+    private val _loading = MutableLiveData<Boolean>()
+    val loading: LiveData<Boolean> = _loading
 
-2. **Firebase Configuration**:
-   - Add Firebase to the Android project and configure `google-services.json`.
+    fun loadPredictions() {
+        _loading.value = true
+        RetrofitInstance.api.getPredictions(/* Auth Token */).enqueue(object : Callback<PredictionsResponse> {
+            override fun onResponse(call: Call<PredictionsResponse>, response: Response<PredictionsResponse>) {
+                _loading.value = false
+                if (response.isSuccessful) {
+                    _predictions.value = response.body()?.data ?:
 
-3. **Network Layer**:
-   - Implement Retrofit instance and API service interface.
-   - Implement data models for API requests and responses.
+ emptyList()
+                }
+            }
 
-4. **Authentication**:
-   - Implement Firebase authentication helper.
-   - Implement ViewModel for authentication.
-   - Create UI screens for registration, login, and logout.
+            override fun onFailure(call: Call<PredictionsResponse>, t: Throwable) {
+                _loading.value = false
+            }
+        })
+    }
 
-5. **Prediction Management**:
-   - Implement ViewModel and Repository for prediction data.
-   - Create UI screens for creating, viewing, modifying, and deleting predictions.
-   - Implement file upload for image prediction.
+    fun getPredictionById(id: String?): LiveData<PredictionData?> {
+        val prediction = MutableLiveData<PredictionData?>()
+        id?.let {
+            RetrofitInstance.api.getPredictionById(/* Auth Token */, it).enqueue(object : Callback<PredictionResponse> {
+                override fun onResponse(call: Call<PredictionResponse>, response: Response<PredictionResponse>) {
+                    if (response.isSuccessful) {
+                        prediction.value = response.body()?.data
+                    }
+                }
 
-6. **Profile Management**:
-   - Implement ViewModel and Repository for profile data.
-   - Create UI screens for updating profile information.
-
-7. **Testing and Debugging**:
-   - Test each feature thoroughly.
-   - Debug and fix any issues.
-
-== Milestones
-
-1. **Project Setup and Configuration** - 1 week
-2. **Network Layer and Data Models** - 1 week
-3. **Authentication Implementation** - 2 weeks
-4. **Prediction Management Implementation** - 3 weeks
-5. **Profile Management Implementation** - 2 weeks
-6. **Testing and Debugging** - 2
-
- weeks
-
-== Gathering Results
-
-Evaluate the implementation based on the following criteria:
-
-1. **Functionality**:
-   - Ensure all user stories are implemented and functional.
-   - Test edge cases and error handling.
-
-2. **Performance**:
-   - Measure the app's performance, including API response times and UI responsiveness.
-
-3. **User Feedback**:
-   - Gather feedback from nurses using the app and make necessary improvements.
-
-With this plan, you can proceed to implement the Kotlin Android application that interacts with the provided Hapi.js backend. If you have any further questions or need specific code examples for any part, feel free to ask!
+                override fun onFailure(call: Call<PredictionResponse>, t: Throwable) {
+                }
+            })
+        }
+        return prediction
+    }
+}
+```
