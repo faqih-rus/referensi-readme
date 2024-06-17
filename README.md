@@ -1,302 +1,282 @@
 
-### 1. **LoginActivity**
-#### Layout XML (res/layout/activity_login.xml)
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
+1. **Setup Firebase**:
+   - Tambahkan Firebase ke proyek Android Anda dengan mengikuti panduan di [dokumentasi Firebase](https://firebase.google.com/docs/android/setup).
 
-    <EditText
-        android:id="@+id/email"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Email"
-        android:inputType="textEmailAddress" />
+2. **Dependencies**:
+   - Pastikan Anda telah menambahkan dependensi Firebase di `build.gradle` Anda:
+     ```groovy
+     implementation 'com.google.firebase:firebase-auth-ktx:21.0.1'
+     implementation 'com.google.firebase:firebase-firestore-ktx:24.0.0'
+     implementation 'com.google.firebase:firebase-storage-ktx:20.0.0'
+     implementation 'com.squareup.okhttp3:okhttp:4.9.3'
+     implementation 'com.squareup.okhttp3:logging-interceptor:4.9.3'
+     ```
 
-    <EditText
-        android:id="@+id/password"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Password"
-        android:inputType="textPassword" />
+3. **Upload Image to Firebase Storage**:
+   - Berikut adalah cara mengunggah gambar ke Firebase Storage dan mendapatkan URL unduhan.
 
-    <Button
-        android:id="@+id/loginButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Login" />
+4. **Save Prediction Data to Firestore**:
+   - Setelah Anda mendapatkan URL gambar dari Firebase Storage, simpan URL tersebut bersama dengan data prediksi ke Firestore.
 
-    <ProgressBar
-        android:id="@+id/progressBar"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:visibility="gone" />
-</LinearLayout>
-```
+Berikut adalah contoh implementasi Kotlin di Android untuk mengunggah gambar, mendapatkan prediksi dari server Flask, dan menyimpan data ke Firestore:
 
-#### Activity Class (LoginActivity.kt)
 ```kotlin
-class LoginActivity : AppCompatActivity() {
+import android.net.Uri
+import android.os.Bundle
+import android.util.Log
+import androidx.appcompat.app.AppCompatActivity
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.UploadTask
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import okhttp3.*
+import org.json.JSONObject
+import java.io.File
+import java.util.*
 
-    private lateinit var viewModel: AuthViewModel
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_login)
-
-        viewModel = ViewModelProvider(this).get(AuthViewModel::class.java)
-
-        val emailEditText = findViewById<EditText>(R.id.email)
-        val passwordEditText = findViewById<EditText>(R.id.password)
-        val loginButton = findViewById<Button>(R.id.loginButton)
-        val progressBar = findViewById<ProgressBar>(R.id.progressBar)
-
-        viewModel.authState.observe(this, { state ->
-            when (state) {
-                is AuthState.Loading -> progressBar.visibility = View.VISIBLE
-                is AuthState.Success -> {
-                    progressBar.visibility = View.GONE
-                    startActivity(Intent(this, MainActivity::class.java))
-                    finish()
-                }
-                is AuthState.Error -> {
-                    progressBar.visibility = View.GONE
-                    Toast.makeText(this, state.message, Toast.LENGTH_LONG).show()
-                }
-            }
-        })
-
-        loginButton.setOnClickListener {
-            val email = emailEditText.text.toString()
-            val password = passwordEditText.text.toString()
-            viewModel.login(email, password)
-        }
-    }
-}
-```
-
-### 2. **MainActivity**
-MainActivity akan menjadi tempat utama untuk navigasi antara berbagai layar seperti daftar prediksi dan profil.
-
-#### Layout XML (res/layout/activity_main.xml)
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical">
-
-    <FrameLayout
-        android:id="@+id/fragment_container"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent" />
-</LinearLayout>
-```
-
-#### Activity Class (MainActivity.kt)
-```kotlin
 class MainActivity : AppCompatActivity() {
+
+    private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
+    private val firestore: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
+    private val storage: FirebaseStorage by lazy { FirebaseStorage.getInstance() }
+    private val client = OkHttpClient()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        if (savedInstanceState == null) {
-            supportFragmentManager.beginTransaction()
-                .replace(R.id.fragment_container, PredictionsListFragment())
-                .commit()
+        // Dummy image file Uri
+        val imageUri: Uri = Uri.fromFile(File("/path/to/your/image.jpg"))
+
+        // Replace with actual baby details and prediction ID
+        val babyName = "Baby Name"
+        val age = 1
+        val weight = 3.5
+        val predictionId = "unique_prediction_id"
+
+        // Start the process
+        uploadImageAndGetPrediction(imageUri, babyName, age, weight, predictionId)
+    }
+
+    private fun uploadImageAndGetPrediction(imageUri: Uri, babyName: String, age: Int, weight: Double, predictionId: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val userId = auth.currentUser?.uid ?: throw Exception("User not logged in")
+
+                // Upload image to Firebase Storage
+                val imageUrl = uploadImageToFirebaseStorage(imageUri, userId)
+
+                // Send image to Flask server and get prediction
+                val predictionData = sendImageToFlaskServer(imageUri)
+
+                // Save prediction data to Firestore
+                savePredictionDataToFirestore(userId, imageUrl, predictionData, babyName, age, weight, predictionId)
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error: ${e.message}")
+            }
         }
+    }
+
+    private suspend fun uploadImageToFirebaseStorage(imageUri: Uri, userId: String): String {
+        val storageRef = storage.reference.child("predictions/$userId/${UUID.randomUUID()}.jpg")
+        val uploadTask = storageRef.putFile(imageUri).await()
+        return uploadTask.storage.downloadUrl.await().toString()
+    }
+
+    private fun sendImageToFlaskServer(imageUri: Uri): JSONObject {
+        val file = File(imageUri.path!!)
+        val requestBody = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("image", file.name, RequestBody.create(MediaType.parse("image/jpeg"), file))
+            .build()
+
+        val request = Request.Builder()
+            .url("http://34.101.242.192:5000/predict")
+            .post(requestBody)
+            .build()
+
+        val response = client.newCall(request).execute()
+        return JSONObject(response.body()?.string() ?: throw Exception("Invalid response from server"))
+    }
+
+    private fun savePredictionDataToFirestore(userId: String, imageUrl: String, predictionData: JSONObject, babyName: String, age: Int, weight: Double, predictionId: String) {
+        val prediction = predictionData.getString("prediction")
+        val suggestion = predictionData.getString("suggestion")
+        val confidence = predictionData.getDouble("confidence")
+
+        val predictionMap = hashMapOf(
+            "id" to predictionId,
+            "babyName" to babyName,
+            "age" to age,
+            "weight" to weight,
+            "prediction" to prediction,
+            "suggestion" to suggestion,
+            "confidence" to confidence,
+            "imageUrl" to imageUrl,
+            "createdAt" to System.currentTimeMillis(),
+            "updatedAt" to System.currentTimeMillis()
+        )
+
+        firestore.collection("predictions").document(userId).collection("data").document(predictionId).set(predictionMap)
+            .addOnSuccessListener {
+                Log.d("MainActivity", "Prediction data saved successfully")
+            }
+            .addOnFailureListener { e ->
+                Log.e("MainActivity", "Error saving prediction data: ${e.message}")
+            }
     }
 }
 ```
 
-### 3. **PredictionsListFragment**
-#### Layout XML (res/layout/fragment_predictions_list.xml)
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
+### Penjelasan Kode:
 
-    <ListView
-        android:id="@+id/predictions_list"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" />
+1. **Upload Image**:
+   - `uploadImageToFirebaseStorage` mengunggah gambar ke Firebase Storage dan mengembalikan URL gambar yang diunggah.
 
-    <ProgressBar
-        android:id="@+id/progressBar"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:visibility="gone" />
-</LinearLayout>
+2. **Send Image to Flask Server**:
+   - `sendImageToFlaskServer` mengirim gambar ke server Flask dan mengembalikan hasil prediksi dalam bentuk JSON.
+
+3. **Save Prediction Data to Firestore**:
+   - `savePredictionDataToFirestore` menyimpan data prediksi, termasuk URL gambar, ke Firebase Firestore.
+
+### Perlu Diingat:
+- Pastikan untuk menyesuaikan `imageUri` dengan jalur gambar yang benar.
+- Pastikan Anda telah mengonfigurasi Firebase Authentication, Storage, dan Firestore dengan benar di proyek Anda.
+- Pastikan URL server Flask (`http://34.101.242.192:5000/predict`)
+
+telah diatur dan dapat diakses dari aplikasi Android.
+
+Berikut adalah langkah-langkah rinci untuk implementasi:
+
+### 1. Konfigurasi Firebase di Proyek Anda
+
+Pastikan Anda telah mengonfigurasi Firebase di proyek Android Anda dengan mengikuti langkah-langkah di [Firebase Documentation](https://firebase.google.com/docs/android/setup). Tambahkan dependensi berikut ke `build.gradle`:
+
+```groovy
+implementation 'com.google.firebase:firebase-auth-ktx:21.0.1'
+implementation 'com.google.firebase:firebase-firestore-ktx:24.0.0'
+implementation 'com.google.firebase:firebase-storage-ktx:20.0.0'
+implementation 'com.squareup.okhttp3:okhttp:4.9.3'
+implementation 'com.squareup.okhttp3:logging-interceptor:4.9.3'
 ```
 
-#### Fragment Class (PredictionsListFragment.kt)
+### 2. Mengunggah Gambar ke Firebase Storage
+
+Untuk mengunggah gambar ke Firebase Storage, gunakan fungsi berikut:
+
 ```kotlin
-class PredictionsListFragment : Fragment() {
-
-    private lateinit var viewModel: PredictionViewModel
-    private lateinit var listView: ListView
-    private lateinit var progressBar: ProgressBar
-
-    override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View? {
-        val view = inflater.inflate(R.layout.fragment_predictions_list, container, false)
-        listView = view.findViewById(R.id.predictions_list)
-        progressBar = view.findViewById(R.id.progressBar)
-        return view
-    }
-
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        viewModel = ViewModelProvider(this).get(PredictionViewModel::class.java)
-
-        viewModel.predictions.observe(viewLifecycleOwner, { predictions ->
-            progressBar.visibility = View.GONE
-            val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_list_item_1, predictions.map { it.babyName })
-            listView.adapter = adapter
-        })
-
-        viewModel.loading.observe(viewLifecycleOwner, { isLoading ->
-            progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
-        })
-
-        listView.setOnItemClickListener { _, _, position, _ ->
-            val prediction = viewModel.predictions.value?.get(position)
-            val intent = Intent(activity, PredictionDetailActivity::class.java)
-            intent.putExtra("PREDICTION_ID", prediction?.id)
-            startActivity(intent)
-        }
-
-        viewModel.loadPredictions()
-    }
+private suspend fun uploadImageToFirebaseStorage(imageUri: Uri, userId: String): String {
+    val storageRef = storage.reference.child("predictions/$userId/${UUID.randomUUID()}.jpg")
+    val uploadTask = storageRef.putFile(imageUri).await()
+    return uploadTask.storage.downloadUrl.await().toString()
 }
 ```
 
-### 4. **PredictionDetailActivity**
-#### Layout XML (res/layout/activity_prediction_detail.xml)
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
+### 3. Mengirim Gambar ke Server Flask dan Mendapatkan Prediksi
 
-    <TextView
-        android:id="@+id/babyName"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Baby Name" />
+Gunakan OkHttp untuk mengirim gambar ke server Flask dan mendapatkan prediksi:
 
-    <TextView
-        android:id="@+id/prediction"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Prediction" />
+```kotlin
+private fun sendImageToFlaskServer(imageUri: Uri): JSONObject {
+    val file = File(imageUri.path!!)
+    val requestBody = MultipartBody.Builder()
+        .setType(MultipartBody.FORM)
+        .addFormDataPart("image", file.name, RequestBody.create(MediaType.parse("image/jpeg"), file))
+        .build()
 
-    <!-- Add other prediction details here -->
-</LinearLayout>
+    val request = Request.Builder()
+        .url("http://34.101.242.192:5000/predict")
+        .post(requestBody)
+        .build()
+
+    val response = client.newCall(request).execute()
+    return JSONObject(response.body()?.string() ?: throw Exception("Invalid response from server"))
+}
 ```
 
-#### Activity Class (PredictionDetailActivity.kt)
-```kotlin
-class PredictionDetailActivity : AppCompatActivity() {
+### 4. Menyimpan Data Prediksi ke Firestore
 
-    private lateinit var viewModel: PredictionViewModel
+Setelah mendapatkan URL gambar dan data prediksi, simpan data tersebut ke Firestore:
+
+```kotlin
+private fun savePredictionDataToFirestore(userId: String, imageUrl: String, predictionData: JSONObject, babyName: String, age: Int, weight: Double, predictionId: String) {
+    val prediction = predictionData.getString("prediction")
+    val suggestion = predictionData.getString("suggestion")
+    val confidence = predictionData.getDouble("confidence")
+
+    val predictionMap = hashMapOf(
+        "id" to predictionId,
+        "babyName" to babyName,
+        "age" to age,
+        "weight" to weight,
+        "prediction" to prediction,
+        "suggestion" to suggestion,
+        "confidence" to confidence,
+        "imageUrl" to imageUrl,
+        "createdAt" to System.currentTimeMillis(),
+        "updatedAt" to System.currentTimeMillis()
+    )
+
+    firestore.collection("predictions").document(userId).collection("data").document(predictionId).set(predictionMap)
+        .addOnSuccessListener {
+            Log.d("MainActivity", "Prediction data saved successfully")
+        }
+        .addOnFailureListener { e ->
+            Log.e("MainActivity", "Error saving prediction data: ${e.message}")
+        }
+}
+```
+
+### 5. Memulai Proses dari MainActivity
+
+Gabungkan semua fungsi di atas di `MainActivity`:
+
+```kotlin
+class MainActivity : AppCompatActivity() {
+
+    private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
+    private val firestore: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
+    private val storage: FirebaseStorage by lazy { FirebaseStorage.getInstance() }
+    private val client = OkHttpClient()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_prediction_detail)
+        setContentView(R.layout.activity_main)
 
-        viewModel = ViewModelProvider(this).get(PredictionViewModel::class.java)
+        // Dummy image file Uri
+        val imageUri: Uri = Uri.fromFile(File("/path/to/your/image.jpg"))
 
-        val babyNameTextView = findViewById<TextView>(R.id.babyName)
-        val predictionTextView = findViewById<TextView>(R.id.prediction)
+        // Replace with actual baby details and prediction ID
+        val babyName = "Baby Name"
+        val age = 1
+        val weight = 3.5
+        val predictionId = "unique_prediction_id"
 
-        val predictionId = intent.getStringExtra("PREDICTION_ID")
-        viewModel.getPredictionById(predictionId).observe(this, { prediction ->
-            prediction?.let {
-                babyNameTextView.text = it.babyName
-                predictionTextView.text = it.prediction
-                // Set other prediction details
-            }
-        })
+        // Start the process
+        uploadImageAndGetPrediction(imageUri, babyName, age, weight, predictionId)
     }
-}
-```
 
-### 5. **ViewModel Implementation**
+    private fun uploadImageAndGetPrediction(imageUri: Uri, babyName: String, age: Int, weight: Double, predictionId: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val userId = auth.currentUser?.uid ?: throw Exception("User not logged in")
 
-#### AuthViewModel (AuthViewModel.kt)
-```kotlin
-class AuthViewModel : ViewModel() {
+                // Upload image to Firebase Storage
+                val imageUrl = uploadImageToFirebaseStorage(imageUri, userId)
 
-    private val _authState = MutableLiveData<AuthState>()
-    val authState: LiveData<AuthState> = _authState
+                // Send image to Flask server and get prediction
+                val predictionData = sendImageToFlaskServer(imageUri)
 
-    fun login(email: String, password: String) {
-        _authState.value = AuthState.Loading
-        FirebaseAuthHelper.login(email, password) { result, error ->
-            if (error != null) {
-                _authState.value = AuthState.Error(error.message ?: "Unknown error")
-            } else {
-                _authState.value = AuthState.Success
+                // Save prediction data to Firestore
+                savePredictionDataToFirestore(userId, imageUrl, predictionData, babyName, age, weight, predictionId)
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error: ${e.message}")
             }
         }
-    }
-}
-```
-
-#### PredictionViewModel (PredictionViewModel.kt)
-```kotlin
-class PredictionViewModel : ViewModel() {
-
-    private val _predictions = MutableLiveData<List<PredictionData>>()
-    val predictions: LiveData<List<PredictionData>> = _predictions
-
-    private val _loading = MutableLiveData<Boolean>()
-    val loading: LiveData<Boolean> = _loading
-
-    fun loadPredictions() {
-        _loading.value = true
-        RetrofitInstance.api.getPredictions(/* Auth Token */).enqueue(object : Callback<PredictionsResponse> {
-            override fun onResponse(call: Call<PredictionsResponse>, response: Response<PredictionsResponse>) {
-                _loading.value = false
-                if (response.isSuccessful) {
-                    _predictions.value = response.body()?.data ?:
-
- emptyList()
-                }
-            }
-
-            override fun onFailure(call: Call<PredictionsResponse>, t: Throwable) {
-                _loading.value = false
-            }
-        })
-    }
-
-    fun getPredictionById(id: String?): LiveData<PredictionData?> {
-        val prediction = MutableLiveData<PredictionData?>()
-        id?.let {
-            RetrofitInstance.api.getPredictionById(/* Auth Token */, it).enqueue(object : Callback<PredictionResponse> {
-                override fun onResponse(call: Call<PredictionResponse>, response: Response<PredictionResponse>) {
-                    if (response.isSuccessful) {
-                        prediction.value = response.body()?.data
-                    }
-                }
-
-                override fun onFailure(call: Call<PredictionResponse>, t: Throwable) {
-                }
-            })
-        }
-        return prediction
     }
 }
 ```
