@@ -1,31 +1,66 @@
+Dari log yang Anda berikan, terlihat ada dua jenis error yang perlu diatasi:
 
-1. **Keamanan**:
-   Komunikasi melalui protokol HTTP tidak terenkripsi, yang berarti data yang dikirimkan antara klien (aplikasi Android) dan server dapat dibaca oleh pihak ketiga jika mereka berhasil menyadap koneksi tersebut. Ini dapat menyebabkan masalah keamanan seperti kebocoran data sensitif, pencurian sesi, atau serangan man-in-the-middle. Oleh karena itu, menggunakan HTTPS sangat direkomendasikan untuk aplikasi produksi.
+1. **Error Firebase App Check**
+```
+Error getting App Check token; using placeholder token instead. Error: com.google.firebase.FirebaseException: No AppCheckProvider installed.
+```
 
-2. **Kebijakan Keamanan Jaringan Android**:
-   Sejak Android 9 (API level 28), kebijakan keamanan jaringan Android secara default melarang aplikasi Android untuk melakukan komunikasi melalui protokol HTTP yang tidak aman (cleartext). Ini dilakukan untuk meningkatkan keamanan aplikasi. Oleh karena itu, Anda harus mengonfigurasi kebijakan keamanan jaringan di aplikasi Android Anda untuk mengizinkan komunikasi CLEARTEXT ke alamat IP atau domain tertentu.
+Error ini masih muncul, yang menunjukkan bahwa Firebase App Check belum diinisialisasi dengan benar di aplikasi Android Anda.
 
-3. **Persyaratan Aplikasi dan Toko Aplikasi**:
-   Beberapa toko aplikasi seperti Google Play Store mungkin memiliki persyaratan keamanan yang lebih ketat dan mungkin menolak aplikasi yang melakukan komunikasi melalui HTTP yang tidak aman. Ini dapat membatasi distribusi aplikasi Anda.
+2. **Error Kebijakan Keamanan Jaringan**
+```
+Error: CLEARTEXT communication to 34.128.99.253 not permitted by network security policy
+```
 
-Untuk mengatasi masalah ini, solusi terbaik adalah mengonfigurasi server backend Anda untuk menggunakan HTTPS dengan sertifikat SSL/TLS yang valid. Ini akan menyediakan komunikasi yang aman dan terenkripsi antara aplikasi Android dan server backend.
+Walaupun Anda sudah mengonfigurasi kebijakan keamanan jaringan, sepertinya masih ada masalah yang menyebabkan error ini.
 
-Namun, jika Anda memang harus menggunakan HTTP untuk sementara waktu (misalnya, untuk tujuan pengembangan atau pengujian), Anda dapat mengonfigurasi kebijakan keamanan jaringan di aplikasi Android Anda untuk mengizinkan komunikasi CLEARTEXT. Lakukan langkah-langkah berikut:
+Untuk mengatasi masalah ini, saya sarankan Anda melakukan langkah-langkah berikut:
 
-1. Buat file `res/xml/network_security_config.xml` dengan isi:
+### 1. Inisialisasi Firebase App Check
+
+Pastikan Anda telah menginisialisasi Firebase App Check dengan benar di aplikasi Android Anda. Anda dapat melakukannya dengan menambahkan kode berikut di kelas `Application` Anda (misalnya `MyApplication.kt`):
+
+```kotlin
+import com.google.firebase.FirebaseApp
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
+
+class MyApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        FirebaseApp.initializeApp(this)
+        val firebaseAppCheck = FirebaseAppCheck.getInstance()
+        firebaseAppCheck.installAppCheckProviderFactory(
+            PlayIntegrityAppCheckProviderFactory.getInstance()
+        )
+    }
+}
+```
+
+Jangan lupa untuk menambahkan referensi ke kelas `Application` Anda di `AndroidManifest.xml`:
+
+```xml
+<application
+    android:name=".MyApplication"
+    ...>
+    ...
+</application>
+```
+
+### 2. Periksa Konfigurasi Kebijakan Keamanan Jaringan
+
+Pastikan Anda telah mengonfigurasi kebijakan keamanan jaringan dengan benar di `res/xml/network_security_config.xml`:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">IP_ATAU_DOMAIN_SERVER_ANDA</domain>
+        <domain includeSubdomains="true">34.128.99.253</domain>
     </domain-config>
 </network-security-config>
 ```
 
-Ganti `IP_ATAU_DOMAIN_SERVER_ANDA` dengan alamat IP atau domain server backend Anda.
-
-2. Tambahkan referensi ke file `network_security_config.xml` di `AndroidManifest.xml`:
+Dan juga pastikan Anda telah menambahkan referensi ke file `network_security_config.xml` di `AndroidManifest.xml`:
 
 ```xml
 <application
@@ -36,4 +71,14 @@ Ganti `IP_ATAU_DOMAIN_SERVER_ANDA` dengan alamat IP atau domain server backend A
 </application>
 ```
 
-Dengan melakukan ini, aplikasi Android Anda akan diizinkan untuk melakukan komunikasi CLEARTEXT (HTTP) ke alamat IP atau domain server backend Anda. Namun, ingat bahwa ini hanya sebagai solusi sementara dan tidak direkomendasikan untuk aplikasi produksi karena alasan keamanan.
+### 3. Periksa Kode Sumber dan Dependensi
+
+Periksa kode sumber aplikasi Android Anda dan dependensi yang digunakan. Pastikan tidak ada kode atau dependensi lain yang menyebabkan konflik dengan konfigurasi yang Anda lakukan.
+
+### 4. Bersihkan dan Rebuild Proyek
+
+Coba bersihkan dan rebuild proyek Android Anda. Terkadang, kesalahan cache atau build dapat menyebabkan masalah seperti ini.
+
+Jika Anda telah melakukan semua langkah di atas dan error masih berlanjut, saya sarankan Anda memeriksa logcat untuk informasi error tambahan yang dapat membantu Anda mengatasi masalah ini. Anda juga dapat mencoba membuat proyek baru untuk melihat apakah masalah ini spesifik untuk proyek Anda atau tidak.
+
+Jika masalah masih berlanjut setelah melakukan semua langkah di atas, silakan berikan informasi lebih lanjut seperti kode sumber yang terkait atau detail tambahan tentang proyek Anda, sehingga saya dapat membantu dengan lebih baik.
